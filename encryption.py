@@ -89,3 +89,39 @@ try:
     unwrap_dek(wrapped, wrong_kek)
 except Exception as e:
     print(f"Wrong KEK failed as expected: {e}")
+
+
+#=================================================================
+# encrypt file content using DEK
+def encrypt_file(content: bytes, dek: bytes) -> tuple[bytes, bytes, bytes]:
+    iv = secrets.token_bytes(12)
+    aesgcm = AESGCM(dek)
+    encrypted = aesgcm.encrypt(iv, content, None)
+    ciphertext = encrypted[:-16]    # everything except last 16 bytes
+    tag        = encrypted[-16:]    # last 16 bytes is the GCM tag
+    return ciphertext, iv, tag
+
+# decrypt file content using DEK
+def decrypt_file(ciphertext: bytes, iv: bytes, tag: bytes, dek: bytes) -> bytes:
+    aesgcm = AESGCM(dek)
+    encrypted = ciphertext + tag    # reassemble for AESGCM
+    return aesgcm.decrypt(iv, encrypted, None)
+
+
+"""
+# test encrypt/decrypt
+content = b"Hello, this is my secret file content!"
+ciphertext, iv, tag = encrypt_file(content, dek)
+print(len(iv))          # 12
+print(len(tag))         # 16
+
+decrypted = decrypt_file(ciphertext, iv, tag, dek)
+print(decrypted)        # original content
+
+wrong_dek = generate_dek()
+try:
+    decrypt_file(ciphertext, iv, tag, wrong_dek)
+except Exception as e:
+    print(f"Wrong DEK failed as expected: {e}")
+"""
+
