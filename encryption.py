@@ -27,26 +27,6 @@ def derive_kek(password: str, salt: bytes) -> bytes:
     )
     return kdf.derive(password.encode("utf-8"))    # hint: password needs to be bytes
 
-
-
-"""
-#Test for KEK
-
-salt = generate_kek_salt()
-kek = derive_kek("mypassword123", salt)
-print(len(kek))   # should print 32
-print(type(kek))  # should print <class 'bytes'>
-
-# same password + same salt = same key
-kek2 = derive_kek("mypassword123", salt)
-print(kek == kek2)  # should print True
-
-# different password = different key
-kek3 = derive_kek("wrongpassword", salt)
-print(kek == kek3)  # should print False
-
-"""
-
 #Generate DEK of 32 bytes
 def generate_dek() -> bytes:
     return secrets.token_bytes(32)
@@ -65,31 +45,6 @@ def unwrap_dek(wrapped_dek: bytes, kek: bytes) -> bytes:
     aesgcm = AESGCM(kek)            # same key as wrap_dek
     return aesgcm.decrypt(iv, encrypted, None)  # iv, then decrypt wrapped_dek
 
-#Test for DEK
-
-# generate fresh DEK
-dek = generate_dek()
-print(len(dek))         # should print 32
-
-# derive a KEK to wrap it with
-salt = generate_kek_salt()
-kek = derive_kek("mypassword123", salt)
-
-# wrap the DEK
-wrapped = wrap_dek(dek, kek)
-print(len(wrapped))     # should print more than 32 (iv + ciphertext + tag)
-
-# unwrap with correct KEK
-recovered_dek = unwrap_dek(wrapped, kek)
-print(dek == recovered_dek)   # should print True
-
-# unwrap with wrong KEK — should raise an error
-wrong_kek = derive_kek("wrongpassword", salt)
-try:
-    unwrap_dek(wrapped, wrong_kek)
-except Exception as e:
-    print(f"Wrong KEK failed as expected: {e}")
-
 
 #=================================================================
 # encrypt file content using DEK
@@ -107,21 +62,4 @@ def decrypt_file(ciphertext: bytes, iv: bytes, tag: bytes, dek: bytes) -> bytes:
     encrypted = ciphertext + tag    # reassemble for AESGCM
     return aesgcm.decrypt(iv, encrypted, None)
 
-
-"""
-# test encrypt/decrypt
-content = b"Hello, this is my secret file content!"
-ciphertext, iv, tag = encrypt_file(content, dek)
-print(len(iv))          # 12
-print(len(tag))         # 16
-
-decrypted = decrypt_file(ciphertext, iv, tag, dek)
-print(decrypted)        # original content
-
-wrong_dek = generate_dek()
-try:
-    decrypt_file(ciphertext, iv, tag, wrong_dek)
-except Exception as e:
-    print(f"Wrong DEK failed as expected: {e}")
-"""
 
