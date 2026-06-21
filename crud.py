@@ -1,12 +1,14 @@
 """
 create_file()  → encrypt file content + store in DB
 read_file()    → fetch from DB + decrypt content
+get_encrypted_file() → fetch encrypted bytes for display
 update_file()  → re-encrypt with new content + update DB
 delete_file()  → remove file from DB
 list_files()   → return all filenames for the user
 """
 
 import uuid
+import base64
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from cryptography.exceptions import InvalidTag
@@ -60,6 +62,25 @@ def read_file(filename: str, user_id: str, dek: bytes, db: Session) -> dict:
     return {
         "filename": filename,
         "content": content.decode("utf-8"),
+        "created_at": file_record.created_at.isoformat(),
+        "updated_at": file_record.updated_at.isoformat(),
+    }
+
+
+def get_encrypted_file(filename: str, user_id: str, db: Session) -> dict:
+    # step 1 — fetch file from DB
+    file_record = db.query(EncryptedFile).filter(
+        EncryptedFile.owner_id == user_id,
+        EncryptedFile.filename == filename
+    ).first()
+    if not file_record:
+        raise ValueError(f"File '{filename}' not found.")
+
+    return {
+        "filename": filename,
+        "ciphertext": base64.b64encode(file_record.ciphertext).decode("utf-8"),
+        "iv": base64.b64encode(file_record.iv).decode("utf-8"),
+        "tag": base64.b64encode(file_record.tag).decode("utf-8"),
         "created_at": file_record.created_at.isoformat(),
         "updated_at": file_record.updated_at.isoformat(),
     }
