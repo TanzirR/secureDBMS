@@ -238,16 +238,16 @@ export default function App() {
       <div className={`theme-shell ${theme === 'light' ? 'theme-light' : 'theme-dark'}`}>
         <div className="shell auth-shell">
           <div className="auth-topbar">
-            <div className="brand-lock">SecureVault</div>
+            <div className="brand-lock">CypherCore</div>
             <button className="ghost small" type="button" onClick={toggleTheme}>
               {theme === 'dark' ? 'Light theme' : 'Dark theme'}
             </button>
           </div>
           <div className="auth-hero">
-            <div className="brand-lock">SecureVault</div>
+            <div className="brand-lock">CypherCore</div>
             <h1>Encrypted files, presented cleanly.</h1>
             <p>
-              Store sensitive content, decrypt it on demand, and manage your vault from a polished React interface.
+              Store sensitive content, decrypt it on demand, and manage your vault.
             </p>
             <div className="auth-points">
               <span>Fast authentication</span>

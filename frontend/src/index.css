@@ -79,7 +79,7 @@ button {
 }
 
 .card {
-  background: linear-gradient(180deg, rgba(14, 31, 36, 0.92), rgba(10, 24, 28, 0.8));
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   backdrop-filter: blur(14px);
