@@ -1,4 +1,4 @@
-# SecureVault System Design Report
+# SecureVault Project Report
 
 This report describes the overall system design, the FastAPI endpoints, the database tables, and a practical way to demonstrate that file data is stored encrypted in the database.
 
@@ -12,6 +12,51 @@ SecureVault is built around four layers:
 - API exposure in `backend/main.py`
 
 The important design idea is that plaintext file content is never written directly to the database. Instead, the application encrypts file content with a Data Encryption Key (DEK), stores the encrypted bytes, and later decrypts them only after the user has authenticated.
+
+## 1.1 System Design Diagram
+
+```mermaid
+flowchart LR
+  U[User] --> FE[React/Vite Frontend]
+  FE -->|POST /api/auth/register| API[FastAPI Backend]
+  FE -->|POST /api/auth/login| API
+  FE -->|Bearer token + JSON| API
+
+  API --> AUTH[auth.py]
+  API --> CRUD[crud.py]
+  AUTH --> CRYPTO[encryption.py]
+  CRUD --> CRYPTO
+
+  AUTH --> DB[(SQLite: secure_files.db)]
+  CRUD --> DB
+
+  AUTH --> JWT[JWT access token]
+  JWT --> FE
+```
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant FE as Frontend
+  participant API as FastAPI
+  participant AUTH as auth.py
+  participant CRUD as crud.py
+  participant CRYPTO as encryption.py
+  participant DB as SQLite
+
+  User->>FE: Register or log in
+  FE->>API: POST /api/auth/register or /api/auth/login
+  API->>AUTH: Validate credentials and issue token
+  AUTH->>CRYPTO: Derive KEK / generate DEK / wrap DEK
+  AUTH->>DB: Store user record
+  API-->>FE: access_token + username
+  FE->>FE: Store token in localStorage
+  User->>FE: Create / view / update file
+  FE->>API: POST/GET/PUT /api/files...
+  API->>CRUD: Read or write encrypted row
+  CRUD->>CRYPTO: Encrypt or decrypt with DEK
+  CRUD->>DB: Store ciphertext, IV, and tag
+```
 
 ## 2. API Surface
 
@@ -255,6 +300,94 @@ If you want to present the system live, this sequence works well:
 
 That sequence demonstrates both confidentiality and usability.
 
+## 6. Attack Vectors and Security Analysis
+
+This project is a good example of a secure-by-design prototype, but it still has a real attack surface. The most relevant threats are below.
+
+### Brute-force password attacks
+
+An attacker may try many password guesses against the login endpoint.
+
+Mitigations:
+
+- passwords are hashed with Argon2id
+- registration requires passwords to be at least 8 characters long
+- login responses do not reveal whether the username or password was wrong
+
+Residual risk:
+
+- there is no rate limiting or account lockout yet
+
+### Token theft and session hijacking
+
+The JWT is stored in `localStorage`, so malicious JavaScript in the page could steal it.
+
+Mitigations:
+
+- the token is required for all protected API calls
+- the token expires after one hour
+
+Residual risk:
+
+- a stolen token also exposes the DEK inside the JWT payload until expiration
+
+### JWT tampering
+
+An attacker may try to modify the token and impersonate another user.
+
+Mitigations:
+
+- the backend verifies the JWT signature
+- invalid or expired tokens are rejected
+
+### Ciphertext tampering
+
+An attacker with database access may try to alter encrypted file data.
+
+Mitigations:
+
+- AES-GCM provides authenticated encryption
+- tampering causes decryption failure
+
+### SQL injection
+
+Database-backed applications often fail if they build raw SQL from user input.
+
+Mitigations:
+
+- the project uses SQLAlchemy ORM filters
+- input is validated by FastAPI and Pydantic models
+
+### Unauthorized file access
+
+An attacker may guess a filename and try to access another user’s file.
+
+Mitigations:
+
+- file queries always include both `owner_id` and `filename`
+- the backend only returns records owned by the authenticated user
+
+### Secret exposure in source code
+
+The JWT secret is hardcoded in `auth.py` in the current class-project version.
+
+Risk:
+
+- if the source code is exposed, token forgery becomes possible
+
+Recommended improvement:
+
+- move secrets to environment variables before production use
+
+### Path traversal
+
+This project stores filenames in the database rather than writing them to the filesystem.
+
+Why that matters:
+
+- filenames are logical labels, not filesystem paths
+- there is no direct path traversal target in the current design
+
 ## 7. Summary
 
 The system design is simple but effective:
@@ -265,4 +398,12 @@ The system design is simple but effective:
 - the FastAPI endpoint `/api/files/{filename}/encrypted` exposes the encrypted payload for verification
 - SQLite inspection shows the stored file rows are not plaintext
 
-This makes the security story easy to explain and easy to demonstrate.
+From a broader security perspective, SecureVault demonstrates the full lifecycle of a secure vault application:
+
+- registration creates both authentication material and key-wrapping material
+- login proves password knowledge and returns an authenticated token
+- the token is used to authorize file operations
+- the DEK is used to encrypt and decrypt file content
+- the database stores ciphertext rather than readable file text
+
+This makes the security story easy to explain and easy to demonstrate, while still leaving room for realistic improvements such as rate limiting, secret management, and stronger browser-side token handling.

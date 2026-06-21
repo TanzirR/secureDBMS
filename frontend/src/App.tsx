@@ -245,7 +245,7 @@ export default function App() {
           </div>
           <div className="auth-hero">
             <div className="brand-lock">CypherCore</div>
-            <h1>Encrypted files, presented cleanly.</h1>
+            <h1>Your encrypted files, accessible only to you.</h1>
             <p>
               Store sensitive content, decrypt it on demand, and manage your vault.
             </p>
