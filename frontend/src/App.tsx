@@ -126,8 +126,19 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
+      const username = authForm.username.trim();
+      const password = authForm.password;
+
+      if (!username) {
+        throw new Error('Username is required');
+      }
+
+      if (mode === 'register' && password.length < 8) {
+        throw new Error('Password must be at least 8 characters long');
+      }
+
       const action = mode === 'login' ? login : register;
-      const result = await action(authForm.username.trim(), authForm.password);
+      const result = await action(username, password);
       setToken(result.access_token);
       setUsername(result.username);
       setAuthForm({ username: '', password: '' });
@@ -269,10 +280,12 @@ export default function App() {
                 <input
                   type="password"
                   value={authForm.password}
+                  minLength={mode === 'register' ? 8 : 1}
                   onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })}
                   placeholder="••••••••"
                 />
               </label>
+              {mode === 'register' ? <div className="muted">Password must be at least 8 characters.</div> : null}
               {error ? <div className="alert error">{error}</div> : null}
               <button className="primary" type="submit" disabled={loading}>
                 {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
