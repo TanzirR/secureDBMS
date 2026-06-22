@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, String, LargeBinary, DateTime, ForeignKey, Integer, inspect, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -19,6 +19,8 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     kek_salt = Column(LargeBinary,nullable=False)
     wrapped_dek = Column(LargeBinary,nullable=False)
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    lockout_until = Column(DateTime, nullable=True)
     files = relationship("EncryptedFile", back_populates="owner", cascade="all, delete-orphan")
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -38,6 +40,23 @@ class EncryptedFile(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    _ensure_login_lockout_columns()
+
+
+def _ensure_login_lockout_columns() -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("users")}
+
+    with engine.begin() as connection:
+        if "failed_login_attempts" not in existing_columns:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0")
+            )
+        if "lockout_until" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN lockout_until DATETIME"))
 
 
 def get_db():

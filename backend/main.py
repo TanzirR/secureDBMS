@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from auth import login_user, register_user, verify_token
+from auth import LoginCooldownError, login_user, register_user, verify_token
 from crud import create_file, delete_file, get_encrypted_file, list_files, read_file, update_file
 from model import SessionLocal, init_db
 from backend.schemas import (
@@ -93,6 +93,12 @@ def login(payload: LoginRequest, db: DbSession):
         login_result = login_user(payload.username, payload.password, db)
         token_payload = verify_token(login_result["access_token"])
         return AuthResponse(access_token=login_result["access_token"], username=token_payload["username"])
+    except LoginCooldownError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 

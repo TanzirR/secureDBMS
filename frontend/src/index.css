@@ -277,6 +277,12 @@ textarea {
   color: #ffd8d7;
 }
 
+.alert.info {
+  background: rgba(86, 194, 166, 0.1);
+  border-color: rgba(86, 194, 166, 0.2);
+  color: var(--text);
+}
+
 .app-shell {
   display: grid;
   gap: 18px;

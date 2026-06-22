@@ -24,6 +24,18 @@ export type FileListResponse = {
   files: FileItem[];
 };
 
+export class ApiError extends Error {
+  status: number;
+  retryAfterSeconds: number | null;
+
+  constructor(message: string, status: number, retryAfterSeconds: number | null = null) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
 function getToken() {
@@ -49,7 +61,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const message = typeof payload === 'string' ? payload : payload?.detail || 'Request failed';
-    throw new Error(message);
+    const retryAfterHeader = response.headers.get('retry-after');
+    const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : null;
+    throw new ApiError(message, response.status, Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : null);
   }
 
   return payload as T;

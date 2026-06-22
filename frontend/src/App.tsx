@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
+  ApiError,
   createFile,
   deleteFile,
   getEncryptedFile,
@@ -18,6 +19,8 @@ import {
 type Mode = 'login' | 'register';
 type Composer = 'create' | 'view' | 'encrypted' | 'update' | 'delete';
 
+const LOGIN_COOLDOWN_STORAGE_KEY = 'securevault_login_cooldown_until';
+
 export default function App() {
   const [mode, setMode] = useState<Mode>('login');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -35,6 +38,12 @@ export default function App() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [, setCooldownTick] = useState(0);
+  const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(() => {
+    const storedValue = localStorage.getItem(LOGIN_COOLDOWN_STORAGE_KEY);
+    const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : Number.NaN;
+    return Number.isFinite(parsedValue) && parsedValue > Date.now() ? parsedValue : null;
+  });
 
   const [authForm, setAuthForm] = useState({ username: '', password: '' });
   const [createForm, setCreateForm] = useState({ filename: '', content: '' });
@@ -52,6 +61,29 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('securevault_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (loginCooldownUntil) {
+      localStorage.setItem(LOGIN_COOLDOWN_STORAGE_KEY, String(loginCooldownUntil));
+      return;
+    }
+
+    localStorage.removeItem(LOGIN_COOLDOWN_STORAGE_KEY);
+  }, [loginCooldownUntil]);
+
+  useEffect(() => {
+    if (!loginCooldownUntil) return;
+
+    const timer = window.setInterval(() => {
+      if (Date.now() >= loginCooldownUntil) {
+        setLoginCooldownUntil(null);
+      } else {
+        setCooldownTick((current) => current + 1);
+      }
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginCooldownUntil]);
 
   useEffect(() => {
     if (!token) return;
@@ -128,9 +160,15 @@ export default function App() {
     try {
       const username = authForm.username.trim();
       const password = authForm.password;
+      const now = Date.now();
 
       if (!username) {
         throw new Error('Username is required');
+      }
+
+      if (mode === 'login' && loginCooldownUntil && now < loginCooldownUntil) {
+        const remainingSeconds = Math.max(1, Math.ceil((loginCooldownUntil - now) / 1000));
+        throw new Error(`Too many failed login attempts. Please wait ${remainingSeconds} seconds before trying again.`);
       }
 
       if (mode === 'register' && password.length < 8) {
@@ -142,7 +180,12 @@ export default function App() {
       setToken(result.access_token);
       setUsername(result.username);
       setAuthForm({ username: '', password: '' });
+      setLoginCooldownUntil(null);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 429 && mode === 'login') {
+        const retryAfterSeconds = err.retryAfterSeconds ?? 120;
+        setLoginCooldownUntil(Date.now() + retryAfterSeconds * 1000);
+      }
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setLoading(false);
@@ -233,18 +276,24 @@ export default function App() {
     setDeleteConfirmed(false);
   }
 
+  const loginCooldownRemainingSeconds = loginCooldownUntil
+    ? Math.max(0, Math.ceil((loginCooldownUntil - Date.now()) / 1000))
+    : 0;
+
+  const isLoginCooldownActive = mode === 'login' && loginCooldownRemainingSeconds > 0;
+
   if (!token) {
     return (
       <div className={`theme-shell ${theme === 'light' ? 'theme-light' : 'theme-dark'}`}>
         <div className="shell auth-shell">
           <div className="auth-topbar">
-            <div className="brand-lock">CypherCore</div>
+            <div className="brand-lock">SecureDBMS</div>
             <button className="ghost small" type="button" onClick={toggleTheme}>
               {theme === 'dark' ? 'Light theme' : 'Dark theme'}
             </button>
           </div>
           <div className="auth-hero">
-            <div className="brand-lock">CypherCore</div>
+            <div className="brand-lock">SecureDBMS</div>
             <h1>Your encrypted files, accessible only to you.</h1>
             <p>
               Store sensitive content, decrypt it on demand, and manage your vault.
@@ -285,9 +334,16 @@ export default function App() {
                   placeholder="••••••••"
                 />
               </label>
-              {mode === 'register' ? <div className="muted">Password must be at least 8 characters.</div> : null}
+              {isLoginCooldownActive ? (
+                <div className="alert info">
+                  Too many failed login attempts. Try again in {loginCooldownRemainingSeconds} second
+                  {loginCooldownRemainingSeconds === 1 ? '' : 's'}.
+                </div>
+              ) : mode === 'register' ? (
+                <div className="muted">Password must be at least 8 characters.</div>
+              ) : null}
               {error ? <div className="alert error">{error}</div> : null}
-              <button className="primary" type="submit" disabled={loading}>
+              <button className="primary" type="submit" disabled={loading || isLoginCooldownActive}>
                 {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
               </button>
             </form>
@@ -302,7 +358,7 @@ export default function App() {
       <div className="shell app-shell">
         <header className="topbar card">
           <div>
-            <div className="brand-lock">SecureVault</div>
+            <div className="brand-lock">SecureDBMS</div>
             <div className="muted">Logged in as {username}</div>
           </div>
           <div className="topbar-actions">

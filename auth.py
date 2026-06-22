@@ -20,6 +20,8 @@ from model import User
 JWT_SECRET = "change-this-to-a-long-random-secret-in-production"
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 1
+LOGIN_FAILURE_LIMIT = 3
+LOGIN_COOLDOWN = timedelta(minutes=2)
 
 # Argon2id hasher
 ph = PasswordHasher(
@@ -27,6 +29,12 @@ ph = PasswordHasher(
     memory_cost=65536,
     parallelism=1,
 )
+
+
+class LoginCooldownError(ValueError):
+    def __init__(self, message: str, retry_after_seconds: int):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 def register_user(username: str, password: str, db: Session) -> dict:
@@ -50,6 +58,8 @@ def register_user(username: str, password: str, db: Session) -> dict:
         password_hash=password_hash,
         kek_salt=kek_salt,
         wrapped_dek=wrapped_dek,
+        failed_login_attempts=0,
+        lockout_until=None,
     )
     db.add(user)
     db.commit()
@@ -63,15 +73,43 @@ def login_user(username: str, password: str, db: Session) -> dict:
     if not user:
         raise ValueError("Invalid username or password.")
 
+    now = datetime.utcnow()
+    if user.lockout_until is not None:
+        if user.lockout_until > now:
+            remaining_seconds = max(1, int((user.lockout_until - now).total_seconds()))
+            raise LoginCooldownError(
+                "Too many failed login attempts. Please wait 2 minutes before trying again.",
+                remaining_seconds,
+            )
+
+        user.failed_login_attempts = 0
+        user.lockout_until = None
+        db.commit()
+
     # step 2 — verify password against Argon2id hash
     try:
         ph.verify(user.password_hash, password)
     except VerifyMismatchError:
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= LOGIN_FAILURE_LIMIT:
+            user.failed_login_attempts = 0
+            user.lockout_until = now + LOGIN_COOLDOWN
+            db.commit()
+            raise LoginCooldownError(
+                "Too many failed login attempts. Please wait 2 minutes before trying again.",
+                int(LOGIN_COOLDOWN.total_seconds()),
+            )
+
+        db.commit()
         raise ValueError("Invalid username or password.")
 
     # step 3 — re-derive KEK and unwrap DEK
     kek = derive_kek(password, user.kek_salt)
     dek = unwrap_dek(user.wrapped_dek, kek)
+
+    user.failed_login_attempts = 0
+    user.lockout_until = None
+    db.commit()
 
     # step 4 — issue JWT with DEK embedded
     payload = {
