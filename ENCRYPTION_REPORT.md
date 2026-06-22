@@ -184,7 +184,7 @@ This design gives a few benefits:
 
 The current implementation puts the DEK inside the JWT after login. That makes the JWT more than an identity token; it also becomes a temporary decryption credential. Anyone who gets the token before it expires can decrypt that user’s files through the API.
 
-That may be acceptable for this project, but it is important to understand because it changes the security model.
+My system assumes that a valid session token is equivalent to access to decrypted user data. Therefore, the JWT is treated as a short-lived capability token that authorizes both authentication and decryption operations.  
 
 ## 7. Short Mental Model
 
