@@ -14,7 +14,7 @@ SecureVault is a file encryption and decryption app with:
 ## Run backend
 
 ```bash
-cd /home/tanzir/inse_6110
+cd /your_project_directory/secureDBMS
 python -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
@@ -24,7 +24,7 @@ uvicorn backend.main:app --reload --port 8000
 ## Run frontend
 
 ```bash
-cd /home/tanzir/inse_6110/frontend
+cd /your_project_directory/secureDBMS/frontend
 npm install
 npm run dev
 ```
