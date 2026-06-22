@@ -59,6 +59,7 @@ def register_user(username: str, password: str, db: Session) -> dict:
         kek_salt=kek_salt,
         wrapped_dek=wrapped_dek,
         failed_login_attempts=0,
+        failed_login=0,
         lockout_until=None,
     )
     db.add(user)
@@ -83,6 +84,7 @@ def login_user(username: str, password: str, db: Session) -> dict:
             )
 
         user.failed_login_attempts = 0
+        user.failed_login = 0
         user.lockout_until = None
         db.commit()
 
@@ -91,8 +93,10 @@ def login_user(username: str, password: str, db: Session) -> dict:
         ph.verify(user.password_hash, password)
     except VerifyMismatchError:
         user.failed_login_attempts += 1
+        user.failed_login += 1
         if user.failed_login_attempts >= LOGIN_FAILURE_LIMIT:
             user.failed_login_attempts = 0
+            user.failed_login = 0
             user.lockout_until = now + LOGIN_COOLDOWN
             db.commit()
             raise LoginCooldownError(
@@ -108,6 +112,7 @@ def login_user(username: str, password: str, db: Session) -> dict:
     dek = unwrap_dek(user.wrapped_dek, kek)
 
     user.failed_login_attempts = 0
+    user.failed_login = 0
     user.lockout_until = None
     db.commit()
 

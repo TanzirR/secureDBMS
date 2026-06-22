@@ -20,6 +20,7 @@ class User(Base):
     kek_salt = Column(LargeBinary,nullable=False)
     wrapped_dek = Column(LargeBinary,nullable=False)
     failed_login_attempts = Column(Integer, nullable=False, default=0)
+    failed_login = Column(Integer, nullable=False, default=0)
     lockout_until = Column(DateTime, nullable=True)
     files = relationship("EncryptedFile", back_populates="owner", cascade="all, delete-orphan")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -55,6 +56,8 @@ def _ensure_login_lockout_columns() -> None:
             connection.execute(
                 text("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0")
             )
+        if "failed_login" not in existing_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN failed_login INTEGER NOT NULL DEFAULT 0"))
         if "lockout_until" not in existing_columns:
             connection.execute(text("ALTER TABLE users ADD COLUMN lockout_until DATETIME"))
 

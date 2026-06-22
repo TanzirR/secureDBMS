@@ -19,7 +19,21 @@ import {
 type Mode = 'login' | 'register';
 type Composer = 'create' | 'view' | 'encrypted' | 'update' | 'delete';
 
-const LOGIN_COOLDOWN_STORAGE_KEY = 'securevault_login_cooldown_until';
+const LOGIN_COOLDOWN_STORAGE_PREFIX = 'securevault_login_cooldown_until:';
+
+function normalizeAuthUsername(username: string) {
+  return username.trim();
+}
+
+function getLoginCooldownStorageKey(username: string) {
+  return `${LOGIN_COOLDOWN_STORAGE_PREFIX}${normalizeAuthUsername(username)}`;
+}
+
+function getStoredLoginCooldownUntil(username: string) {
+  const storedValue = localStorage.getItem(getLoginCooldownStorageKey(username));
+  const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : Number.NaN;
+  return Number.isFinite(parsedValue) && parsedValue > Date.now() ? parsedValue : null;
+}
 
 export default function App() {
   const [mode, setMode] = useState<Mode>('login');
@@ -39,11 +53,8 @@ export default function App() {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [, setCooldownTick] = useState(0);
-  const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(() => {
-    const storedValue = localStorage.getItem(LOGIN_COOLDOWN_STORAGE_KEY);
-    const parsedValue = storedValue ? Number.parseInt(storedValue, 10) : Number.NaN;
-    return Number.isFinite(parsedValue) && parsedValue > Date.now() ? parsedValue : null;
-  });
+  const [loginCooldownUntil, setLoginCooldownUntil] = useState<number | null>(null);
+  const [loginCooldownUsername, setLoginCooldownUsername] = useState<string>('');
 
   const [authForm, setAuthForm] = useState({ username: '', password: '' });
   const [createForm, setCreateForm] = useState({ filename: '', content: '' });
@@ -63,13 +74,28 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (loginCooldownUntil) {
-      localStorage.setItem(LOGIN_COOLDOWN_STORAGE_KEY, String(loginCooldownUntil));
+    const normalizedUsername = normalizeAuthUsername(authForm.username);
+    if (!normalizedUsername) {
       return;
     }
 
-    localStorage.removeItem(LOGIN_COOLDOWN_STORAGE_KEY);
-  }, [loginCooldownUntil]);
+    const storedUntil = getStoredLoginCooldownUntil(normalizedUsername);
+    if (storedUntil) {
+      setLoginCooldownUsername(normalizedUsername);
+      setLoginCooldownUntil(storedUntil);
+    }
+  }, [authForm.username]);
+
+  useEffect(() => {
+    if (loginCooldownUntil && loginCooldownUsername) {
+      localStorage.setItem(getLoginCooldownStorageKey(loginCooldownUsername), String(loginCooldownUntil));
+      return;
+    }
+
+    if (loginCooldownUsername) {
+      localStorage.removeItem(getLoginCooldownStorageKey(loginCooldownUsername));
+    }
+  }, [loginCooldownUntil, loginCooldownUsername]);
 
   useEffect(() => {
     if (!loginCooldownUntil) return;
@@ -158,7 +184,7 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const username = authForm.username.trim();
+      const username = normalizeAuthUsername(authForm.username);
       const password = authForm.password;
       const now = Date.now();
 
@@ -166,7 +192,7 @@ export default function App() {
         throw new Error('Username is required');
       }
 
-      if (mode === 'login' && loginCooldownUntil && now < loginCooldownUntil) {
+      if (mode === 'login' && loginCooldownUsername === username && loginCooldownUntil && now < loginCooldownUntil) {
         const remainingSeconds = Math.max(1, Math.ceil((loginCooldownUntil - now) / 1000));
         throw new Error(`Too many failed login attempts. Please wait ${remainingSeconds} seconds before trying again.`);
       }
@@ -177,13 +203,17 @@ export default function App() {
 
       const action = mode === 'login' ? login : register;
       const result = await action(username, password);
+      localStorage.removeItem(getLoginCooldownStorageKey(username));
       setToken(result.access_token);
       setUsername(result.username);
       setAuthForm({ username: '', password: '' });
+      setLoginCooldownUsername('');
       setLoginCooldownUntil(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 429 && mode === 'login') {
+        const username = normalizeAuthUsername(authForm.username);
         const retryAfterSeconds = err.retryAfterSeconds ?? 120;
+        setLoginCooldownUsername(username);
         setLoginCooldownUntil(Date.now() + retryAfterSeconds * 1000);
       }
       setError(err instanceof Error ? err.message : 'Authentication failed');
@@ -280,7 +310,8 @@ export default function App() {
     ? Math.max(0, Math.ceil((loginCooldownUntil - Date.now()) / 1000))
     : 0;
 
-  const isLoginCooldownActive = mode === 'login' && loginCooldownRemainingSeconds > 0;
+  const isLoginCooldownActive =
+    mode === 'login' && loginCooldownUsername === normalizeAuthUsername(authForm.username) && loginCooldownRemainingSeconds > 0;
 
   if (!token) {
     return (
