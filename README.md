@@ -1,5 +1,7 @@
 # SecureVault
 
+<img width="1315" height="597" alt="login_page" src="https://github.com/user-attachments/assets/1a21828d-ddde-4701-9c08-744c03ea4d43" />
+
 SecureVault is a file encryption and decryption app with:
 - a FastAPI backend
 - a React frontend
